@@ -1,0 +1,393 @@
+---
+title: "Project"
+author: "Uttara"
+date: "2025-06-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+#Import your data 
+attach(Data) #attcahing the excel file 
+
+#Declaring the variables
+y<-Data$`BSE Sensex`
+x1<-Data$`Exchange rate`
+x2<-Data$`Crude oil`
+x3<-Data$`Gold price`
+x4<-Data$`FII`
+x5<-Data$`DII`
+x6<-Data$`Interest rate`
+data<-data.frame(y,x1,x2,x3,x4,x5,x6)
+
+# List of variables for which ADF test should be applied
+variables <- c("y", "x1", "x2", "x3", "x4", "x5","x6")
+
+
+#Dignostic Tests
+
+
+#(1)Checking the stationarity (ADF Test)
+install.packages(tseries)
+library(tseries)
+
+# Loop through each variable
+for (var in variables)
+{
+  cat("\n--- ADF Test for:", var, "---\n")
+  series <- ts(data[[var]])
+  result <- adf.test(series, alternative = "stationary")
+  print(result)
+}
+
+#Saving the above result in a table 
+
+adf_results <- data.frame(Variable = character(), P_Value = numeric(), stringsAsFactors = FALSE)
+
+for (var in variables) {
+  series <- ts(data[[var]])
+  test <- adf.test(series)
+  adf_results <- rbind(adf_results, data.frame(Variable = var, P_Value = test$p.value))
+}
+
+print(adf_results)
+
+
+#(2)Checking for the Autocorrelation(DW Test)
+# Load required package
+install.packages(lmtest)
+library(lmtest)
+
+
+# Variables to test
+
+variables <- c("y", "x1", "x2", "x3", "x4", "x5","x6")
+
+cat("----- Durbin-Watson Test for Autocorrelation -----\n")
+
+for(var in variables)
+{
+  cat("\nVariable:", var, "\n")
+  y <- ts(data[[var]])
+  model <- lm(y ~ lag(y, -1), na.action = na.omit)  # simple AR(1) model
+  dw <- dwtest(model)
+  print(dw)
+}
+
+#Saving the Outcome in a table
+
+dw_results <- data.frame(Variable = character(), DW_Statistic = numeric(), P_Value = numeric(), stringsAsFactors = FALSE)
+
+for (var in variables)
+{
+  y <- ts(data[[var]])
+  model <- lm(y ~ lag(y, -1), na.action = na.omit)
+  test <- dwtest(model)
+  dw_results <- rbind(dw_results, data.frame(Variable = var, DW_Statistic = test$statistic, P_Value = test$p.value))
+}
+dw_results
+
+
+#(3)Checking for the  Heteroscedasticity (BP Test)
+# Load required packages
+library(lmtest)
+library(car)
+
+cat("\n----- Breusch-Pagan Test for Heteroscedasticity -----\n")
+
+for(var in variables)
+{
+  cat("\nVariable:", var, "\n")
+  y <- ts(data[[var]])
+  model <- lm(y ~ lag(y, -1), na.action = na.omit)  # again a simple AR(1)
+  bp <- bptest(model)
+  print(bp)
+}
+
+#Saving the outcome in a table 
+
+bp_results <- data.frame(Variable = character(), BP_Statistic = numeric(), P_Value = numeric(), stringsAsFactors = FALSE)
+
+for (var in variables)
+{
+  y <- ts(data[[var]])
+  model <- lm(y ~ lag(y, -1), na.action = na.omit)
+  test <- bptest(model)
+  bp_results <- rbind(bp_results, data.frame(Variable = var, BP_Statistic = test$statistic, P_Value = test$p.value))
+}
+bp_results
+
+
+#(3)Checking for the Multicollinearity
+
+library(car)
+model <- lm(y ~ x1 +x2 + x3 + x4 + x5 + x6, data = data) # Build a multiple linear regression model
+summary(model)
+vif(model) # Check VIF
+
+
+#Now taking required transformation and saving the variables and checking again for dignostic test
+
+# PCA (Principal Component Analysis)
+# Load required packages
+install.packages(readr)
+install.packages(stats)
+install.packages(ggplot2)
+library(readr)
+library(stats)
+library(ggplot2)
+
+# Select relevant numeric columns
+features <- data[, c("Y", "X1", "X2", "X3", "X4","X5","X6")] #These variables are transformed variables
+features_scaled <- scale(features) #Standardize the data
+
+# Perform PCA
+pca_result <- prcomp(features_scaled, center = TRUE, scale. = TRUE)
+summary(pca_result)
+biplot(pca_result)
+
+
+
+
+
+#Granger Causality Test (Including all Variables)
+# Load required package
+library(lmtest)
+
+grangertest(Y ~ X1, order = 2, data = data) #Example: Does exchange_rate Granger-cause sensex?
+variables <- c("X1", "X2", "X3", "X4", "X5","X6")
+for (var in variables)
+{
+  cat("\n--- Granger Causality Test:", var, "→ sensex ---\n")
+  test <- grangertest(data$sensex ~ data[[var]], order = 2)
+  print(test)
+} #adjust order = 2 depending on lag selection criteria (AIC/BIC)
+
+
+
+#Cointegration Test (Johansen Test – Including all Variables)
+# Load required package
+library(urca)
+
+# Create a matrix of all variables (assuming they are all I(1))
+a <- data[, c("Y", "X1", "X2", "X3", "X4", "X5","X6")]
+a_ts <- ts(a) #Convert to time series matrix
+
+# Apply Johansen Cointegration Test
+johansen_test <- ca.jo(a_ts, type = "trace", ecdet = "const", K = 2)
+summary(johansen_test) # K = 2 specifies the number of lags, use VARselect() from vars package to choose optimal lag.
+
+
+#VECM (Including all Variables)
+# Load required libraries
+library(urca)
+library(vars)
+
+
+# Convert data to time series matrix
+a <- data[, c("Y", "X1", "X2", "X3", "X4", "X5","X6")]
+a_ts <- ts(a)
+
+# Johansen test 
+johansen_test <- ca.jo(a_ts, type = "trace", ecdet = "const", K = 2)
+vecm_model <- cajorls(johansen_test, r = 1)  #r = number of cointegration relationships
+summary(vecm_model$rlm) #change r = 1 based on Johansen test result’s trace statistic
+
+
+
+
+
+
+
+
+
+
+#ARDL (Including all Variables)
+# Load required package
+install.packages(dynlm)
+library(dynlm)
+ardl_model <- dynlm(sensex ~ L(Y, 1) + L(X1, 1) + L(X2, 1) +
+                    L(X3, 1) + L(X4, 1) + L(X5, 1),L(X6,1) data = data)
+summary(ardl_model)
+bounds_test <- bounds_f_test(ardl_model)
+summary(bounds_test)
+
+
+#Granger Causality Test for Significant Variables Only
+# Load required package
+install.packages(lmtest)
+library(lmtest)
+
+
+# Define significant variables
+sig_vars <- c("X1", "X2", "X3")
+
+
+# Run Granger causality in both directions
+for (var in sig_vars)
+{
+  cat("\n======", var, "<-> Y ======\n")
+  
+  # Test: var → Y
+  cat("---", var, "→ Y ---\n")
+  test1 <- grangertest(Y ~ data[[var]], order = 2, data = data)
+  print(test1)
+  
+  # Test: Y → var
+  cat("--- Y →", var, " ---\n")
+  test2 <- grangertest(data[[var]] ~ Y, order = 2, data = data)
+  print(test2)
+}
+
+
+#Johansen Cointegration Test (for Significant Variables only)
+
+# Load required package
+install.packages(urca)
+library(urca)
+
+
+# Select only the significant variables + Y
+
+vars_sig <- data[, c("Y", "X1", "X2", "X3")]
+
+
+# Convert to time series
+vars_sig_ts <- ts(vars_sig)
+
+
+# Johansen cointegration test (trace test)
+johansen_sig <- ca.jo(vars_sig_ts, type = "trace", ecdet = "const", K = 2)
+summary(johansen_sig)
+
+
+# VECM (Vector Error Correction Model) (with Significant Variables Only)
+# Load required libraries
+install.packages(urca)
+install.packages(vars)
+library(urca)
+library(vars)
+
+vars_sig <- data[, c("Y", "X1", "X2", "X3")]
+vars_sig_ts <- ts(vars_sig)
+
+johansen_sig <- ca.jo(vars_sig_ts, type = "trace", ecdet = "const", K = 2) # Step 1: Johansen Cointegration (already done earlier)
+
+vecm_sig <- cajorls(johansen_sig, r = 1) # Step 2: Fit VECM (choose 'r' from Johansen test result)
+summary(vecm_sig$rlm)
+
+
+
+
+#ARDL + Bounds Test Including Significant Variables
+
+# Load required library
+install.packages(ARDL)
+library(ARDL)
+
+
+# Convert to time series
+data_ts <- ts(data)
+
+
+# Fit ARDL model with auto lag selection (based on AIC)
+ardl_sig <- auto_ardl(Y ~ X1 + X2 + X3,
+                      data = data_ts, max_order = 3, selection = "AIC")
+                      
+summary(ardl_sig)
+
+# Bounds F-test for cointegration
+bounds_result <- bounds_f_test(ardl_sig)
+print(bounds_result)
+
+
+#Volatility Modeling 
+#ARCH Effect Check
+
+#Load required library
+install.packages(FinTS)
+library(FinTS)
+
+variables <- c("Y", "X1", "X2", "X3", "X4", "X5","X6")
+
+for (var in variables)
+{
+  cat("\n--- ARCH Test for:", var, "---\n")
+  series <- ts(data[[var]])
+  print(ArchTest(series, lags = 12)) 
+} #If p-value < 0.05, ARCH effect is present
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+library(lmtest)
+library(tseries)
+
+# Fit OLS model
+ols_model <- lm(Y ~ 1)  # Constant mean
+
+# Apply ARCH-LM test (Breusch-Godfrey test with squared residuals)
+bgtest(ols_model, order = 12, type = "Chisq")
+
+#GARCH-X
+
+# Load required packages
+install.packages(rugarch)
+install.packages(readr)
+library(rugarch)
+library(readr)
+
+# Align data lengths
+returns_df <- na.omit(data.frame(
+  Y = diff(log(data$Y)) * 100,
+  X1 = diff(log(data$X1)) * 100
+  X2 = diff(log(data$X2)) * 100,
+  X3 = diff(log(data$X3)) * 100,
+  X4 = diff(log(data$X4)) * 100,
+  X5 = diff(log(data$X5)) * 100,
+  X6 = diff(log(data$X6)) * 100
+))
+
+# Define GARCH-X model with multiple exogenous variables
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1),
+                        external.regressors = as.matrix(returns_df[, -1])),  # All except 'Y'
+  mean.model = list(armaOrder = c(1,0), include.mean = TRUE),
+  distribution.model = "norm
+)
+
+# Fit the model
+garch_fit <- ugarchfit(spec = garch_spec, data = returns_df$Y)
+show(garch_fit)
